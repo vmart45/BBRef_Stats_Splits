@@ -113,82 +113,89 @@ def get_splits(
                 cols += [split_type, playerid]
                 target.append(cols)
 
-    def clean(df_raw, pitching_splits):
-        if not df_raw:
-            return pd.DataFrame()
-
-        tables = []
-        i = 0
-        first_group = True
-        skipped_first_header = False
-
-        while i < len(df_raw):
-            header_row = df_raw[i]
-            j = i + 1
-            while j < len(df_raw) and not (
-                len(df_raw[j]) == len(header_row)
-                and all(x == y for x, y in zip(df_raw[j], header_row))
-            ):
-                j += 1
-
-            group = df_raw[i + 1:j]
-            if not group:
-                i = j
-                continue
-
-            # Skip the very first stat header-only group (the "G GS PA AB..." one)
-            if not skipped_first_header and all(
-                h in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"]
-                for h in header_row[:min(10, len(header_row))]
-            ):
-                skipped_first_header = True
-                i = j
-                continue
-
-            split_type = None
-            if "Split Type" in header_row:
-                split_type_idx = header_row.index("Split Type")
-                split_type = group[0][split_type_idx]
-
-            keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
-            stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
-
-            if not pitching_splits:
-                if not first_group:
-                    blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-                    tables.append(blank)
-                    if split_type:
-                        split_type_row = pd.DataFrame(
-                            [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
-                        )
-                        tables.append(split_type_row)
-                    stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
-                    tables.append(stat_header_row)
-                else:
-                    if split_type:
-                        split_type_row = pd.DataFrame(
-                            [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
-                        )
-                        tables.append(split_type_row)
-
-            df = pd.DataFrame(
-                [
-                    [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
-                    for row in group
-                ],
-                columns=keep_cols,
-            )
-            tables.append(df)
-            first_group = False
-            i = j
-
-        if tables:
-            result = pd.concat(tables, ignore_index=True)
-            result.reset_index(drop=True, inplace=True)
-            result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
-            return result
-
+def clean(df_raw, pitching_splits):
+    if not df_raw:
         return pd.DataFrame()
+
+    tables = []
+    i = 0
+    first_group = True
+    skipped_first_header = False
+
+    while i < len(df_raw):
+        header_row = df_raw[i]
+        j = i + 1
+        while j < len(df_raw) and not (
+            len(df_raw[j]) == len(header_row)
+            and all(x == y for x, y in zip(df_raw[j], header_row))
+        ):
+            j += 1
+
+        group = df_raw[i + 1:j]
+        if not group:
+            i = j
+            continue
+
+        # Skip the very first stat header-only group (the "G GS PA AB..." one)
+        # Check if this group has no data rows with actual split names
+        if not skipped_first_header and first_group:
+            # Check if first data row starts with common stat column names
+            first_data_row = group[0] if group else []
+            first_col = first_data_row[0] if first_data_row else ""
+            
+            # If the first column is a stat column name (G, GS, PA, etc) or empty,
+            # this is the redundant header group
+            if first_col in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", 
+                            "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS", ""]:
+                skipped_first_header = True
+                first_group = False
+                i = j
+                continue
+
+        split_type = None
+        if "Split Type" in header_row:
+            split_type_idx = header_row.index("Split Type")
+            split_type = group[0][split_type_idx] if group else None
+
+        keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
+        stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
+
+        if not pitching_splits:
+            if not first_group:
+                blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
+                tables.append(blank)
+                if split_type:
+                    split_type_row = pd.DataFrame(
+                        [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                    )
+                    tables.append(split_type_row)
+                stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
+                tables.append(stat_header_row)
+            else:
+                if split_type:
+                    split_type_row = pd.DataFrame(
+                        [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                    )
+                    tables.append(split_type_row)
+
+        df = pd.DataFrame(
+            [
+                [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
+                for row in group
+            ],
+            columns=keep_cols,
+        )
+        tables.append(df)
+        first_group = False
+        i = j
+
+    if tables:
+        result = pd.concat(tables, ignore_index=True)
+        result.reset_index(drop=True, inplace=True)
+        result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
+        return result
+
+    return pd.DataFrame()
 
     data = clean(raw_data, pitching_splits)
     level_data = clean(raw_level_data, True) if pitching_splits else pd.DataFrame()
