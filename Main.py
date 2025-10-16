@@ -5,14 +5,12 @@ from typing import Dict, List, Optional, Tuple, Union
 import bs4 as bs
 import pandas as pd
 
-# ---- Safe Baseball-Reference session ----
 try:
     from curl_cffi import requests
     USE_CURL = True
 except ImportError:
     import requests
     USE_CURL = False
-
 
 class BRefSession:
     def __init__(self, max_requests_per_minute: int = 10):
@@ -48,9 +46,7 @@ class BRefSession:
         except Exception as e:
             raise ValueError(f"Error fetching {url}: {e}")
 
-
 session = BRefSession()
-
 
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
     pitch_or_bat = "p" if pitching_splits else "b"
@@ -58,7 +54,6 @@ def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: b
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
     html = session.get(url).content
     return bs.BeautifulSoup(html, "lxml")
-
 
 def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     if not soup:
@@ -78,7 +73,6 @@ def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
         "Bats": fv[3] if len(fv) > 3 else "",
         "Throws": fv[5] if len(fv) > 5 else "",
     }
-
 
 def get_splits(
     playerid: str,
@@ -111,6 +105,9 @@ def get_splits(
 
             target = raw_level_data if split_type.endswith("Level") else raw_data
 
+            # Add header row before every group of stats
+            target.append(headers)
+
             for row in rows[1:]:
                 cols = [ele.text.strip() for ele in row.find_all(["th", "td"])]
                 if not cols or split_type == "By Inning":
@@ -122,37 +119,33 @@ def get_splits(
         if not df_raw:
             return pd.DataFrame()
 
-        # Find header row by checking for first row with all non-empty columns
-        # If not found, use first row as header
-        header_idx = 0
-        for i, row in enumerate(df_raw):
-            if all(cell != "" for cell in row):
-                header_idx = i
-                break
+        # Build DataFrame by splitting at header rows
+        dataframes = []
+        i = 0
+        while i < len(df_raw):
+            header_row = df_raw[i]
+            # Find next header or end
+            j = i + 1
+            while j < len(df_raw) and not (
+                len(df_raw[j]) == len(header_row) and
+                all(x == y for x, y in zip(df_raw[j], header_row))
+            ):
+                j += 1
+            group = df_raw[i+1:j]
+            if group:
+                df = pd.DataFrame(group, columns=header_row)
+                if "Player ID" in df.columns:
+                    df = df.drop(columns=["Player ID"])
+                dataframes.append(df)
+                # Add blank row after each group
+                blank = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
+                dataframes.append(blank)
+            i = j
 
-        df = pd.DataFrame(df_raw)
-        df.columns = df.iloc[header_idx]
-        df = df.drop(header_idx).reset_index(drop=True)
-
-        if "Split" not in df.columns:
-            first_col = df.columns[0]
-            df.rename(columns={first_col: "Split"}, inplace=True)
-        if "Player ID" in df.columns:
-            df = df.drop(columns=["Player ID"])
-
-        # Insert blank rows ONLY between split types, NOT after header!
-        if "Split Type" in df.columns:
-            df_with_gaps = []
-            for split_type, group in df.groupby("Split Type", sort=False):
-                group = group.drop(columns=["Split Type"], errors="ignore")
-                df_with_gaps.append(group)
-                blank = pd.DataFrame([[""] * len(group.columns)], columns=group.columns)
-                df_with_gaps.append(blank)
-            df_final = pd.concat(df_with_gaps, ignore_index=True)
+        if dataframes:
+            return pd.concat(dataframes, ignore_index=True)
         else:
-            df_final = df
-
-        return df_final
+            return pd.DataFrame()
 
     data = clean(raw_data)
     level_data = clean(raw_level_data) if pitching_splits else pd.DataFrame()
@@ -161,7 +154,6 @@ def get_splits(
         return data, level_data
     else:
         return data
-
 
 if __name__ == "__main__":
     skenes, skenes_level = get_splits("skenepa01", year=2025, pitching_splits=True)
