@@ -65,97 +65,60 @@ def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     return player_info_data
 
 
-def get_splits(playerid: str, year: Optional[int] = None, player_info: bool = False, pitching_splits: bool = False) -> \
-Union[pd.DataFrame, Tuple[pd.DataFrame, Dict]]:
+def get_splits(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> pd.DataFrame:
     """
-    Returns a dataframe of all split stats for a given player.
-    If player_info is True, this will also return a dictionary that includes player position, handedness, height, weight, position, and team
+    Returns a DataFrame of split stats for a given player.
+    Safe for both hitters and pitchers.
     """
-    soup = get_split_soup(playerid, year, pitching_splits)
-    comment = soup.find_all(text=lambda text: isinstance(text, bs.Comment))
-    raw_data = []
-    raw_level_data = []
+    pitch_or_bat = 'p' if pitching_splits else 'b'
+    str_year = 'Career' if year is None else str(year)
+    url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
 
-    for i in range(len(comment)):
-        commentsoup = bs.BeautifulSoup(comment[i], 'lxml')
-        split_tables = commentsoup.find_all("div", {"class": "table_container"})
-        splits = [ele for ele in split_tables]
-        headings = []
-        level_headings = []
-        for j in range(len(splits)):
-            split_type = splits[j].find_all('caption')[0].string.strip()
-            if split_type[-5:] == 'Level':
-                if year == None:
-                    level_headings = [th.get_text() for th in splits[j].find("tr").find_all("th")][1:]
-                else:
-                    level_headings = [th.get_text() for th in splits[j].find("tr").find_all("th")][:]
-                level_headings.append('Split Type')
-                level_headings.append('Player ID')
-                level_headings.append('1B')
-                raw_level_data.append(level_headings)
-                rows = splits[j].find_all('tr')
-                for row in rows:
-                    if year == None:
-                        level_cols = row.find_all('td')
-                    else:
-                        level_cols = row.find_all(['th', 'td'])
-                    level_cols = [ele.text.strip() for ele in level_cols]
-                    if split_type != "By Inning":
-                        level_cols.append(split_type)
-                        level_cols.append(playerid)
-                        raw_level_data.append([ele for ele in level_cols])
-            else:
-                if year == None:
-                    headings = [th.get_text() for th in splits[j].find("tr").find_all("th")][1:]
-                else:
-                    headings = [th.get_text() for th in splits[j].find("tr").find_all("th")][:]
-                headings.append('Split Type')
-                headings.append('Player ID')
-                headings.append('1B')
-                raw_data.append(headings)
-                rows = splits[j].find_all('tr')
-                for row in rows:
-                    if year == None:
-                        cols = row.find_all('td')
-                    else:
-                        cols = row.find_all(['th', 'td'])
-                    cols = [ele.text.strip() for ele in cols]
-                    if split_type != "By Inning":
-                        cols.append(split_type)
-                        cols.append(playerid)
-                        raw_data.append([ele for ele in cols])
+    r = requests.get(url)
+    if r.status_code != 200:
+        raise ValueError(f"Error fetching data for {playerid} (HTTP {r.status_code})")
 
-    data = pd.DataFrame(raw_data)
-    data = data.rename(columns=data.iloc[0])
-    data = data.reindex(data.index.drop(0))
-    data = data.set_index(['Player ID', 'Split Type', 'Split'])
-    data = data.drop(index=['Split'], level=2)
-    data = data.apply(pd.to_numeric, errors='coerce').convert_dtypes()
-    data = data.dropna(axis=1, how='all')
-    data['1B'] = data['H'] - data['2B'] - data['3B'] - data['HR']
-    data = data.loc[playerid]
+    soup = bs.BeautifulSoup(r.text, 'lxml')
+    comments = soup.find_all(string=lambda text: isinstance(text, bs.Comment))
 
-    if pitching_splits is True:
-        level_data = pd.DataFrame(raw_level_data)
-        level_data = level_data.rename(columns=level_data.iloc[0])
-        level_data = level_data.reindex(level_data.index.drop(0))
-        level_data = level_data.set_index(['Player ID', 'Split Type', 'Split'])
-        level_data = level_data.drop(index=['Split'], level=2)
-        level_data = level_data.apply(pd.to_numeric, errors='coerce').convert_dtypes()
-        level_data = level_data.dropna(axis=1, how='all')
-        level_data = level_data.loc[playerid]
+    all_rows = []
+    for comment in comments:
+        comment_soup = bs.BeautifulSoup(comment, 'lxml')
+        tables = comment_soup.find_all("table")
+        for table in tables:
+            caption = table.find("caption")
+            if not caption:
+                continue
+            split_type = caption.text.strip()
 
-    if player_info is False:
-        if pitching_splits is True:
-            return data, level_data
-        else:
-            return data
-    else:
-        player_info_data = get_player_info(playerid=playerid, soup=soup)
-        if pitching_splits is True:
-            return data, player_info_data, level_data
-        else:
-            return data, player_info_data
+            rows = table.find_all("tr")
+            if not rows:
+                continue
+
+            headers = [th.get_text(strip=True) for th in rows[0].find_all("th")]
+            if not headers:
+                continue
+
+            data_rows = []
+            for row in rows[1:]:
+                cols = [td.get_text(strip=True) for td in row.find_all(["th", "td"])]
+                if len(cols) != len(headers):
+                    continue
+                data_rows.append(cols)
+
+            if not data_rows:
+                continue
+
+            df = pd.DataFrame(data_rows, columns=headers)
+            df["Split Type"] = split_type
+            all_rows.append(df)
+
+    if not all_rows:
+        raise ValueError(f"No splits found for {playerid} ({'Pitching' if pitching_splits else 'Batting'}) in {str_year}")
+
+    combined = pd.concat(all_rows, ignore_index=True)
+    return combined
+
 
 
 
