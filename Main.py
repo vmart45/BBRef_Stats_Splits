@@ -133,7 +133,8 @@ def get_splits(
                 j += 1
             group = df_raw[i+1:j]
             if group:
-                df = pd.DataFrame(group, columns=header_row)
+                # Insert header row before every group
+                df = pd.DataFrame([header_row] + group, columns=header_row)
                 if "Player ID" in df.columns:
                     df = df.drop(columns=["Player ID"])
                 dataframes.append(df)
