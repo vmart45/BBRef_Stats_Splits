@@ -113,83 +113,85 @@ def get_splits(
                 cols += [split_type, playerid]
                 target.append(cols)
 
-def clean(df_raw, pitching_splits):
-    if not df_raw:
+    # 👇 clean() must be indented INSIDE get_splits
+    def clean(df_raw, pitching_splits):
+        if not df_raw:
+            return pd.DataFrame()
+
+        tables = []
+        i = 0
+        first_actual_table = True
+        
+        while i < len(df_raw):
+            header_row = df_raw[i]
+            j = i + 1
+            while j < len(df_raw) and not (
+                len(df_raw[j]) == len(header_row)
+                and all(x == y for x, y in zip(df_raw[j], header_row))
+            ):
+                j += 1
+
+            group = df_raw[i + 1:j]
+            if not group:
+                i = j
+                continue
+
+            # Skip redundant stat header row
+            first_data_row = group[0] if group else []
+            first_col = first_data_row[0] if first_data_row else ""
+            if first_col in [
+                "G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", 
+                "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS", "Split", ""
+            ]:
+                i = j
+                continue
+
+            split_type = None
+            if "Split Type" in header_row:
+                split_type_idx = header_row.index("Split Type")
+                split_type = group[0][split_type_idx] if group else None
+
+            keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
+            stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
+
+            if not pitching_splits:
+                if not first_actual_table:
+                    blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
+                    tables.append(blank)
+                    if split_type:
+                        split_type_row = pd.DataFrame(
+                            [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                        )
+                        tables.append(split_type_row)
+                    stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
+                    tables.append(stat_header_row)
+                else:
+                    if split_type:
+                        split_type_row = pd.DataFrame(
+                            [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                        )
+                        tables.append(split_type_row)
+
+            df = pd.DataFrame(
+                [
+                    [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
+                    for row in group
+                ],
+                columns=keep_cols,
+            )
+            tables.append(df)
+            first_actual_table = False
+            i = j
+
+        if tables:
+            result = pd.concat(tables, ignore_index=True)
+            result.reset_index(drop=True, inplace=True)
+            result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
+            return result
+
         return pd.DataFrame()
 
-    tables = []
-    i = 0
-    first_actual_table = True
-    
-    while i < len(df_raw):
-        header_row = df_raw[i]
-        j = i + 1
-        while j < len(df_raw) and not (
-            len(df_raw[j]) == len(header_row)
-            and all(x == y for x, y in zip(df_raw[j], header_row))
-        ):
-            j += 1
-
-        group = df_raw[i + 1:j]
-        if not group:
-            i = j
-            continue
-
-        # Skip groups where the first data row is just stat column names repeated
-        first_data_row = group[0] if group else []
-        first_col = first_data_row[0] if first_data_row else ""
-        
-        # Check if this looks like a redundant stats header row
-        if first_col in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", 
-                        "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS", "Split", ""]:
-            i = j
-            continue
-
-        split_type = None
-        if "Split Type" in header_row:
-            split_type_idx = header_row.index("Split Type")
-            split_type = group[0][split_type_idx] if group else None
-
-        keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
-        stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
-
-        if not pitching_splits:
-            if not first_actual_table:
-                blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-                tables.append(blank)
-                if split_type:
-                    split_type_row = pd.DataFrame(
-                        [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
-                    )
-                    tables.append(split_type_row)
-                stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
-                tables.append(stat_header_row)
-            else:
-                if split_type:
-                    split_type_row = pd.DataFrame(
-                        [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
-                    )
-                    tables.append(split_type_row)
-
-        df = pd.DataFrame(
-            [
-                [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
-                for row in group
-            ],
-            columns=keep_cols,
-        )
-        tables.append(df)
-        first_actual_table = False
-        i = j
-
-    if tables:
-        result = pd.concat(tables, ignore_index=True)
-        result.reset_index(drop=True, inplace=True)
-        result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
-        return result
-
-    return pd.DataFrame()
-
+    # ✅ Now these lines will run and return actual DataFrames
     data = clean(raw_data, pitching_splits)
     level_data = clean(raw_level_data, True) if pitching_splits else pd.DataFrame()
 
@@ -197,3 +199,4 @@ def clean(df_raw, pitching_splits):
         return data, level_data
     else:
         return data
+
