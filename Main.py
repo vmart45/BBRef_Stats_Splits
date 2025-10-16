@@ -131,21 +131,22 @@ def get_splits(
         df = pd.DataFrame(df_raw)
         df.columns = df.iloc[0]
         df = df.drop(0).dropna(axis=1, how="all")
-        # fix Split column name
+        # Fix Split column name
         if "Split" not in df.columns:
             first_col = df.columns[0]
             df.rename(columns={first_col: "Split"}, inplace=True)
-        return df
+        # Remove Player ID column
+        if "Player ID" in df.columns:
+            df = df.drop(columns=["Player ID"])
+        # Add blank rows between split groups
+        df_with_gaps = []
+        for _, group in df.groupby("Split Type"):
+            df_with_gaps.append(group.drop(columns=["Split Type"], errors="ignore"))
+            df_with_gaps.append(pd.DataFrame([[""] * len(group.columns)], columns=group.columns))
+        return pd.concat(df_with_gaps, ignore_index=True)
 
     data = clean(raw_data)
     level_data = clean(raw_level_data) if pitching_splits else pd.DataFrame()
-
-    if player_info:
-        info = get_player_info(playerid, soup)
-        for k, v in info.items():
-            data.loc[-1] = [f"{k}: {v}"] + ["" for _ in range(len(data.columns) - 1)]
-        data.index += 1
-        data = data.sort_index()
 
     if pitching_splits:
         return data, level_data
