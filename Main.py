@@ -128,7 +128,7 @@ def get_splits(
                 all(x == y for x, y in zip(df_raw[j], header_row))
             ):
                 j += 1
-            group = df_raw[i+1:j]
+            group = df_raw[i + 1:j]
             if group:
                 split_type = None
                 if "Split Type" in header_row:
@@ -136,33 +136,38 @@ def get_splits(
                     split_type = group[0][split_type_idx]
                 keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
                 stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
-if not pitching_splits:
-    # Blank row before each group except the first one
-    if not first_group:
-        blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-        tables.append(blank)
-        # Add split type and stat header for subsequent groups
-        if split_type:
-            split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
-            tables.append(split_type_row)
-        stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
-        tables.append(stat_header_row)
-    else:
-        # For the first group, just add the split type (no stat header)
-        if split_type:
-            split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
-            tables.append(split_type_row)
 
-                    # Stat header row
-                    stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
-                    tables.append(stat_header_row)
-                    # Data rows
-                    df = pd.DataFrame(
-                        [[row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")] for row in group],
-                        columns=keep_cols
-                    )
-                    tables.append(df)
-                    first_group = False
+                if not pitching_splits:
+                    # Blank row before each group except the first one
+                    if not first_group:
+                        blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
+                        tables.append(blank)
+                        # Add split type and stat header for subsequent groups
+                        if split_type:
+                            split_type_row = pd.DataFrame(
+                                [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                            )
+                            tables.append(split_type_row)
+                        stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
+                        tables.append(stat_header_row)
+                    else:
+                        # For the first group, just add the split type (no stat header)
+                        if split_type:
+                            split_type_row = pd.DataFrame(
+                                [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                            )
+                            tables.append(split_type_row)
+
+                # Data rows
+                df = pd.DataFrame(
+                    [
+                        [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
+                        for row in group
+                    ],
+                    columns=keep_cols,
+                )
+                tables.append(df)
+                first_group = False
             i = j
 
         if tables:
@@ -171,16 +176,15 @@ if not pitching_splits:
             # Remove any index column and blank leftmost column (if present)
             result = result.loc[:, ~result.columns.str.match(r'^\s*$')]
             # Remove top header row (stat_header) if it is present as very first row
-            # Only for pitching_splits == False
             if not pitching_splits and not result.empty:
                 first_row = result.iloc[0].tolist()
                 stat_header = result.columns.tolist()
-                # If first row matches header row exactly, drop it
                 if all([str(a) == str(b) for a, b in zip(first_row, stat_header)]):
                     result = result.iloc[1:].reset_index(drop=True)
             return result
         else:
             return pd.DataFrame()
+
 
     data = clean(raw_data, pitching_splits)
     level_data = clean(raw_level_data, True) if pitching_splits else pd.DataFrame()
