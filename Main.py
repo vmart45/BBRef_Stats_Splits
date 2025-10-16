@@ -119,9 +119,8 @@ def clean(df_raw, pitching_splits):
 
     tables = []
     i = 0
-    first_group = True
-    skipped_first_header = False
-
+    first_actual_table = True
+    
     while i < len(df_raw):
         header_row = df_raw[i]
         j = i + 1
@@ -136,21 +135,15 @@ def clean(df_raw, pitching_splits):
             i = j
             continue
 
-        # Skip the very first stat header-only group (the "G GS PA AB..." one)
-        # Check if this group has no data rows with actual split names
-        if not skipped_first_header and first_group:
-            # Check if first data row starts with common stat column names
-            first_data_row = group[0] if group else []
-            first_col = first_data_row[0] if first_data_row else ""
-            
-            # If the first column is a stat column name (G, GS, PA, etc) or empty,
-            # this is the redundant header group
-            if first_col in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", 
-                            "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS", ""]:
-                skipped_first_header = True
-                first_group = False
-                i = j
-                continue
+        # Skip groups where the first data row is just stat column names repeated
+        first_data_row = group[0] if group else []
+        first_col = first_data_row[0] if first_data_row else ""
+        
+        # Check if this looks like a redundant stats header row
+        if first_col in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", 
+                        "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS", "Split", ""]:
+            i = j
+            continue
 
         split_type = None
         if "Split Type" in header_row:
@@ -161,7 +154,7 @@ def clean(df_raw, pitching_splits):
         stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
 
         if not pitching_splits:
-            if not first_group:
+            if not first_actual_table:
                 blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
                 tables.append(blank)
                 if split_type:
@@ -186,7 +179,7 @@ def clean(df_raw, pitching_splits):
             columns=keep_cols,
         )
         tables.append(df)
-        first_group = False
+        first_actual_table = False
         i = j
 
     if tables:
