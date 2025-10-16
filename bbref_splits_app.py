@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from Main import get_splits
 
-st.title("Baseball-Reference Splits Downloader ⚾")
+st.title("Baseball-Reference Splits Downloader")
 
 st.write("Enter a Baseball-Reference Player ID, Year, and choose whether you want pitching splits.")
 
