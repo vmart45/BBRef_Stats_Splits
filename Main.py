@@ -136,15 +136,23 @@ def get_splits(
                     split_type = group[0][split_type_idx]
                 keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
                 stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
-                if not pitching_splits:
-                    # Blank row before each group except the first one
-                    if not first_group:
-                        blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-                        tables.append(blank)
-                    # Split type row
-                    if split_type:
-                        split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
-                        tables.append(split_type_row)
+if not pitching_splits:
+    # Blank row before each group except the first one
+    if not first_group:
+        blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
+        tables.append(blank)
+        # Add split type and stat header for subsequent groups
+        if split_type:
+            split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
+            tables.append(split_type_row)
+        stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
+        tables.append(stat_header_row)
+    else:
+        # For the first group, just add the split type (no stat header)
+        if split_type:
+            split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
+            tables.append(split_type_row)
+
                     # Stat header row
                     stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
                     tables.append(stat_header_row)
