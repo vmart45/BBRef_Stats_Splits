@@ -131,18 +131,21 @@ def get_splits(
         df = pd.DataFrame(df_raw)
         df.columns = df.iloc[0]
         df = df.drop(0).dropna(axis=1, how="all")
-        # Fix Split column name
+
+        # Fix column names
         if "Split" not in df.columns:
-            first_col = df.columns[0]
-            df.rename(columns={first_col: "Split"}, inplace=True)
-        # Remove Player ID column
+            df.rename(columns={df.columns[0]: "Split"}, inplace=True)
         if "Player ID" in df.columns:
             df = df.drop(columns=["Player ID"])
-        # Add blank rows between split groups
+
+        # --- Add blank rows between split types ---
         df_with_gaps = []
-        for _, group in df.groupby("Split Type"):
-            df_with_gaps.append(group.drop(columns=["Split Type"], errors="ignore"))
-            df_with_gaps.append(pd.DataFrame([[""] * len(group.columns)], columns=group.columns))
+        for split_type, group in df.groupby("Split Type"):
+            group = group.drop(columns=["Split Type"], errors="ignore")
+            df_with_gaps.append(group)
+            # Append one truly blank row (all empty strings)
+            blank = pd.DataFrame([[""] * len(group.columns)], columns=group.columns)
+            df_with_gaps.append(blank)
         return pd.concat(df_with_gaps, ignore_index=True)
 
     data = clean(raw_data)
@@ -153,3 +156,16 @@ def get_splits(
     else:
         return data
 
+
+# ---- Example usage ----
+if __name__ == "__main__":
+    # Pitchers → two CSVs
+    skenes, skenes_level = get_splits("skenepa01", year=2025, pitching_splits=True)
+    skenes.to_csv("skenes_splits.csv", index=False)
+    skenes_level.to_csv("skenes_splits_level.csv", index=False)
+    print("✅ Exported skenes_splits.csv and skenes_splits_level.csv successfully!")
+
+    # Hitters → one CSV
+    # trout = get_splits("troutmi01", year=2025, pitching_splits=False)
+    # trout.to_csv("trout_splits.csv", index=False)
+    # print("✅ Exported trout_splits.csv successfully!")
