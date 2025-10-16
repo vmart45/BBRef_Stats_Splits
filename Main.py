@@ -173,14 +173,18 @@ def get_splits(
         if tables:
             result = pd.concat(tables, ignore_index=True)
             result.reset_index(drop=True, inplace=True)
-            # Remove any index column and blank leftmost column (if present)
             result = result.loc[:, ~result.columns.str.match(r'^\s*$')]
-            # Remove top header row (stat_header) if it is present as very first row
+
+            # Explicitly remove redundant top header row (e.g. "G, GS, PA...")
             if not pitching_splits and not result.empty:
                 first_row = result.iloc[0].tolist()
-                stat_header = result.columns.tolist()
-                if all([str(a) == str(b) for a, b in zip(first_row, stat_header)]):
+                header_like = all(
+                    str(cell).strip() in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI"]
+                    for cell in first_row[:10]
+                )
+                if header_like:
                     result = result.iloc[1:].reset_index(drop=True)
+
             return result
         else:
             return pd.DataFrame()
