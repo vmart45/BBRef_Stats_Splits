@@ -158,12 +158,5 @@ Union[pd.DataFrame, Tuple[pd.DataFrame, Dict]]:
             return data, player_info_data
 
 
-if __name__ == "__main__":
-    from Main import get_splits
-    data, level_data = get_splits("skenepa01", year=2024, pitching_splits=True)
-    data.to_csv("skenes_splits.csv", index=True)
-    level_data.to_csv("skenes_splits_game_level.csv", index=True)
-    print("✅ CSV files saved: skenes_splits.csv and skenes_splits_game_level.csv")
-
 
 
