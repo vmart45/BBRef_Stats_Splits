@@ -119,12 +119,9 @@ def get_splits(
 
         dataframes = []
         i = 0
-        first_header_row = None
+        first_group = True
         while i < len(df_raw):
             header_row = df_raw[i]
-            if first_header_row is None:
-                first_header_row = header_row
-
             j = i + 1
             while j < len(df_raw) and not (
                 len(df_raw[j]) == len(header_row) and
@@ -137,13 +134,13 @@ def get_splits(
                 if "Split Type" in header_row:
                     split_type_idx = header_row.index("Split Type")
                     split_type = group[0][split_type_idx]
-                # Columns to keep
                 keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
                 stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
                 if not pitching_splits:
-                    # Blank row
-                    blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-                    dataframes.append(blank)
+                    # Blank row before each group except the first one
+                    if not first_group:
+                        blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
+                        dataframes.append(blank)
                     # Split type row
                     if split_type:
                         split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
@@ -157,6 +154,7 @@ def get_splits(
                         columns=keep_cols
                     )
                     dataframes.append(df)
+                    first_group = False
                 else:
                     # For pitching splits, keep all headers and just remove Player ID col
                     df = pd.DataFrame(
@@ -169,7 +167,10 @@ def get_splits(
             i = j
 
         if dataframes:
-            return pd.concat(dataframes, ignore_index=True)
+            result = pd.concat(dataframes, ignore_index=True)
+            # Remove index column
+            result.index = [""] * len(result)
+            return result
         else:
             return pd.DataFrame()
 
