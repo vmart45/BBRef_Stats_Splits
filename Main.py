@@ -15,7 +15,6 @@ except ImportError:
 
 
 class BRefSession:
-    """Rate-limited session for Baseball Reference scraping"""
     def __init__(self, max_requests_per_minute: int = 10):
         self.max_requests_per_minute = max_requests_per_minute
         self.last_request: Optional[datetime.datetime] = None
@@ -53,7 +52,6 @@ class BRefSession:
 session = BRefSession()
 
 
-# ---- Helper: soup ----
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
     pitch_or_bat = "p" if pitching_splits else "b"
     str_year = "Career" if year is None else str(year)
@@ -62,7 +60,6 @@ def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: b
     return bs.BeautifulSoup(html, "lxml")
 
 
-# ---- Helper: player info ----
 def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     if not soup:
         soup = get_split_soup(playerid)
@@ -83,7 +80,6 @@ def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     }
 
 
-# ---- Core: get_splits ----
 def get_splits(
     playerid: str,
     year: Optional[int] = None,
@@ -108,15 +104,12 @@ def get_splits(
             if not rows:
                 continue
 
-            # Get headers
             headers = [th.get_text(strip=True) for th in rows[0].find_all("th")]
             if year is None and headers and headers[0] == "I":
                 headers = headers[1:]
             headers += ["Split Type", "Player ID"]
 
-            # Decide which list to fill
             target = raw_level_data if split_type.endswith("Level") else raw_data
-            target.append(headers)
 
             for row in rows[1:]:
                 cols = [ele.text.strip() for ele in row.find_all(["th", "td"])]
@@ -126,27 +119,40 @@ def get_splits(
                 target.append(cols)
 
     def clean(df_raw):
-        if not df_raw or len(df_raw) < 2:
+        if not df_raw:
             return pd.DataFrame()
-        df = pd.DataFrame(df_raw)
-        df.columns = df.iloc[0]
-        df = df.drop(0).dropna(axis=1, how="all")
 
-        # Fix column names
+        # Find header row by checking for first row with all non-empty columns
+        # If not found, use first row as header
+        header_idx = 0
+        for i, row in enumerate(df_raw):
+            if all(cell != "" for cell in row):
+                header_idx = i
+                break
+
+        df = pd.DataFrame(df_raw)
+        df.columns = df.iloc[header_idx]
+        df = df.drop(header_idx).reset_index(drop=True)
+
         if "Split" not in df.columns:
-            df.rename(columns={df.columns[0]: "Split"}, inplace=True)
+            first_col = df.columns[0]
+            df.rename(columns={first_col: "Split"}, inplace=True)
         if "Player ID" in df.columns:
             df = df.drop(columns=["Player ID"])
 
-        # --- Add blank rows between split types ---
-        df_with_gaps = []
-        for split_type, group in df.groupby("Split Type"):
-            group = group.drop(columns=["Split Type"], errors="ignore")
-            df_with_gaps.append(group)
-            # Append one truly blank row (all empty strings)
-            blank = pd.DataFrame([[""] * len(group.columns)], columns=group.columns)
-            df_with_gaps.append(blank)
-        return pd.concat(df_with_gaps, ignore_index=True)
+        # Insert blank rows ONLY between split types, NOT after header!
+        if "Split Type" in df.columns:
+            df_with_gaps = []
+            for split_type, group in df.groupby("Split Type", sort=False):
+                group = group.drop(columns=["Split Type"], errors="ignore")
+                df_with_gaps.append(group)
+                blank = pd.DataFrame([[""] * len(group.columns)], columns=group.columns)
+                df_with_gaps.append(blank)
+            df_final = pd.concat(df_with_gaps, ignore_index=True)
+        else:
+            df_final = df
+
+        return df_final
 
     data = clean(raw_data)
     level_data = clean(raw_level_data) if pitching_splits else pd.DataFrame()
@@ -157,15 +163,12 @@ def get_splits(
         return data
 
 
-# ---- Example usage ----
 if __name__ == "__main__":
-    # Pitchers → two CSVs
     skenes, skenes_level = get_splits("skenepa01", year=2025, pitching_splits=True)
     skenes.to_csv("skenes_splits.csv", index=False)
     skenes_level.to_csv("skenes_splits_level.csv", index=False)
     print("✅ Exported skenes_splits.csv and skenes_splits_level.csv successfully!")
 
-    # Hitters → one CSV
     # trout = get_splits("troutmi01", year=2025, pitching_splits=False)
     # trout.to_csv("trout_splits.csv", index=False)
     # print("✅ Exported trout_splits.csv successfully!")
