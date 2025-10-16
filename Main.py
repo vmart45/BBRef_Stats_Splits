@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import bs4 as bs
 import pandas as pd
 
-# ---- Safe Baseball-Reference session ----
+# ---- Baseball Reference Safe Session ----
 try:
     from curl_cffi import requests
     USE_CURL = True
@@ -28,6 +28,7 @@ class BRefSession:
                 sleep(sleep_length)
 
         self.last_request = datetime.datetime.now()
+
         try:
             if USE_CURL:
                 resp = self.session.get(url, impersonate="chrome", **kwargs)
@@ -50,8 +51,7 @@ class BRefSession:
 
 session = BRefSession()
 
-
-# ---- Helper: soup ----
+# ---- Helpers ----
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
     pitch_or_bat = "p" if pitching_splits else "b"
     str_year = "Career" if year is None else str(year)
@@ -60,7 +60,6 @@ def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: b
     return bs.BeautifulSoup(html, "lxml")
 
 
-# ---- Helper: player info ----
 def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     if not soup:
         soup = get_split_soup(playerid)
@@ -74,14 +73,14 @@ def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
                 cleaned = re.sub(r"[\W_]+", " ", m).strip()
                 if cleaned:
                     fv.append(cleaned)
+
     return {
         "Position": fv[1] if len(fv) > 1 else "",
         "Bats": fv[3] if len(fv) > 3 else "",
         "Throws": fv[5] if len(fv) > 5 else "",
     }
 
-
-# ---- Core: get_splits ----
+# ---- Core ----
 def get_splits(
     playerid: str,
     year: Optional[int] = None,
@@ -106,13 +105,11 @@ def get_splits(
             if not rows:
                 continue
 
-            # column headers
             headers = [th.get_text(strip=True) for th in rows[0].find_all("th")]
             if year is None and headers and headers[0] == "I":
                 headers = headers[1:]
             headers += ["Split Type", "Player ID"]
 
-            # decide list
             target = raw_level_data if split_type.endswith("Level") else raw_data
             target.append(headers)
 
@@ -127,9 +124,11 @@ def get_splits(
         if not df_raw:
             return pd.DataFrame()
         df = pd.DataFrame(df_raw)
+        if df.empty or len(df) < 2:
+            return pd.DataFrame()
         df.columns = df.iloc[0]
         df = df.drop(0).dropna(axis=1, how="all")
-        # normalize Split column name
+        # If there's no Split column, rename first column
         if "Split" not in df.columns:
             first_col = df.columns[0]
             df.rename(columns={first_col: "Split"}, inplace=True)
@@ -138,19 +137,28 @@ def get_splits(
     data = clean(raw_data)
     level_data = clean(raw_level_data) if pitching_splits else pd.DataFrame()
 
-    # ---- merge safely ----
-    if pitching_splits and not data.empty and not level_data.empty:
-        combined = pd.merge(
-            data,
-            level_data,
-            on="Split",
-            how="outer",
-            suffixes=("", "_GameLevel"),
-        )
+    # ✅ Merge safely only if both have valid “Split” column
+    if (
+        pitching_splits
+        and not data.empty
+        and not level_data.empty
+        and "Split" in data.columns
+        and "Split" in level_data.columns
+    ):
+        try:
+            combined = pd.merge(
+                data,
+                level_data,
+                on="Split",
+                how="outer",
+                suffixes=("", "_GameLevel"),
+            )
+        except Exception as e:
+            print(f"⚠️ Merge failed, returning unmerged data. Reason: {e}")
+            combined = pd.concat([data, level_data], ignore_index=True)
     else:
-        combined = data
+        combined = data if not data.empty else level_data
 
-    # ---- optional player info ----
     if player_info:
         info = get_player_info(playerid, soup)
         for k, v in info.items():
@@ -158,7 +166,7 @@ def get_splits(
         combined.index += 1
         combined = combined.sort_index()
 
-    # numeric conversion
+    # Convert numerics
     for col in combined.columns:
         combined[col] = pd.to_numeric(combined[col], errors="ignore")
 
