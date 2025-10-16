@@ -1,93 +1,33 @@
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 import bs4 as bs
 import pandas as pd
-import requests
+from datasources.bref import BRefSession  # ← your existing class
 
-session = requests.Session()
+# Use your safe, rate-limited session
+session = BRefSession()
 
 
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
+    """Fetches the Baseball Reference splits page for a player safely."""
     pitch_or_bat = 'p' if pitching_splits else 'b'
     str_year = 'Career' if year is None else str(year)
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/118.0.5993.117 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    resp = session.get(url)
+    if resp == -1 or resp.status_code != 200:
+        raise ValueError(f"Error fetching data for {playerid} (HTTP {resp.status_code if resp != -1 else 'Unknown'})")
 
-    html = session.get(url, headers=headers).text
-    soup = bs.BeautifulSoup(html, 'lxml')
+    soup = bs.BeautifulSoup(resp.text, 'lxml')
     return soup
-
-
-def _dedup_columns(columns):
-    seen = {}
-    new_cols = []
-    for col in columns:
-        if col not in seen:
-            seen[col] = 0
-            new_cols.append(col)
-        else:
-            seen[col] += 1
-            new_cols.append(f"{col}.{seen[col]}")
-    return new_cols
-
-
-def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
-    if not soup:
-        soup = get_split_soup(playerid)
-    about_info = soup.find_all("div", {"class": "players"})
-    info: List[bs.BeautifulSoup] = [ele for ele in about_info]
-    fv = []
-
-    for i in range(len(info)):
-        ptags = info[i].find_all('p')
-        for j in range(len(ptags)):
-            InfoRegex = re.compile(r'>(.*?)<', re.DOTALL)
-            r = InfoRegex.findall(str(ptags[j]))
-            for k in range(len(r)):
-                pattern = re.compile(r'[\W_]+')
-                strings = pattern.sub(' ', r[k])
-                if strings and strings != ' ':
-                    fv.append(strings)
-
-    player_info_data = {
-        'Position': fv[1] if len(fv) > 1 else None,
-        'Bats': fv[3] if len(fv) > 3 else None,
-        'Throws': fv[5] if len(fv) > 5 else None,
-    }
-    return player_info_data
 
 
 def get_splits(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> pd.DataFrame:
     """
     Returns a DataFrame of split stats for a given player.
-    Safe for both hitters and pitchers.
+    Works for both hitters and pitchers using BRefSession for safe scraping.
     """
-    pitch_or_bat = 'p' if pitching_splits else 'b'
-    str_year = 'Career' if year is None else str(year)
-    url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/118.0.5993.117 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
-    r = requests.get(url, headers=headers)
-    if r.status_code != 200:
-        raise ValueError(f"Error fetching data for {playerid} (HTTP {r.status_code})")
-
-    soup = bs.BeautifulSoup(r.text, 'lxml')
+    soup = get_split_soup(playerid, year, pitching_splits)
     comments = soup.find_all(string=lambda text: isinstance(text, bs.Comment))
 
     all_rows = []
@@ -123,7 +63,8 @@ def get_splits(playerid: str, year: Optional[int] = None, pitching_splits: bool 
             all_rows.append(df)
 
     if not all_rows:
-        raise ValueError(f"No splits found for {playerid} ({'Pitching' if pitching_splits else 'Batting'}) in {str_year}")
+        raise ValueError(f"No splits found for {playerid} ({'Pitching' if pitching_splits else 'Batting'})")
 
     combined = pd.concat(all_rows, ignore_index=True)
     return combined
+
