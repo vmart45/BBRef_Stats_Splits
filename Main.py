@@ -117,7 +117,7 @@ def get_splits(
         if not df_raw:
             return pd.DataFrame()
 
-        dataframes = []
+        tables = []
         i = 0
         first_group = True
         while i < len(df_raw):
@@ -140,36 +140,36 @@ def get_splits(
                     # Blank row before each group except the first one
                     if not first_group:
                         blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-                        dataframes.append(blank)
+                        tables.append(blank)
                     # Split type row
                     if split_type:
                         split_type_row = pd.DataFrame([[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols)
-                        dataframes.append(split_type_row)
+                        tables.append(split_type_row)
                     # Stat header row
                     stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
-                    dataframes.append(stat_header_row)
+                    tables.append(stat_header_row)
                     # Data rows
                     df = pd.DataFrame(
                         [[row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")] for row in group],
                         columns=keep_cols
                     )
-                    dataframes.append(df)
+                    tables.append(df)
                     first_group = False
-                else:
-                    # For pitching splits, keep all headers and just remove Player ID col
-                    df = pd.DataFrame(
-                        [[row[idx] for idx, h in enumerate(header_row) if h != "Player ID"] for row in [header_row] + group],
-                        columns=[h for h in header_row if h != "Player ID"]
-                    )
-                    dataframes.append(df)
-                    blank = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
-                    dataframes.append(blank)
             i = j
 
-        if dataframes:
-            result = pd.concat(dataframes, ignore_index=True)
-            # Remove index column
-            result.index = [""] * len(result)
+        if tables:
+            result = pd.concat(tables, ignore_index=True)
+            result.reset_index(drop=True, inplace=True)
+            # Remove any index column and blank leftmost column (if present)
+            result = result.loc[:, ~result.columns.str.match(r'^\s*$')]
+            # Remove top header row (stat_header) if it is present as very first row
+            # Only for pitching_splits == False
+            if not pitching_splits and not result.empty:
+                first_row = result.iloc[0].tolist()
+                stat_header = result.columns.tolist()
+                # If first row matches header row exactly, drop it
+                if all([str(a) == str(b) for a, b in zip(first_row, stat_header)]):
+                    result = result.iloc[1:].reset_index(drop=True)
             return result
         else:
             return pd.DataFrame()
