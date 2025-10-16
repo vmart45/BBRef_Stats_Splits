@@ -186,8 +186,15 @@ def get_splits(
         if tables:
             result = pd.concat(tables, ignore_index=True)
             result.reset_index(drop=True, inplace=True)
-            result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
-            return result
+             result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
+
+    # 🚫 Force-remove first row if it looks like a header (G, GS, PA, etc.)
+        if not result.empty:
+            first_row_text = " ".join(result.iloc[0].astype(str).tolist())
+            if any(x in first_row_text for x in ["G ", "GS", "PA", "AB", "R ", "H ", "BA", "OBP", "SLG", "OPS"]):
+                result = result.iloc[1:].reset_index(drop=True)
+
+        return result
 
         return pd.DataFrame()
 
