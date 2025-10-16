@@ -1,1 +1,5 @@
-
+streamlit
+pandas
+beautifulsoup4
+lxml
+requests
