@@ -1,21 +1,30 @@
 import re
-from typing import Dict, List, Optional, Tuple, Union
-
+from typing import Dict, List, Optional
 import bs4 as bs
 import pandas as pd
-
 import requests
-session = requests.Session()
 
+session = requests.Session()
 
 
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
     pitch_or_bat = 'p' if pitching_splits else 'b'
     str_year = 'Career' if year is None else str(year)
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
-    html = session.get(url).text
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/118.0.5993.117 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    html = session.get(url, headers=headers).text
     soup = bs.BeautifulSoup(html, 'lxml')
     return soup
+
 
 def _dedup_columns(columns):
     seen = {}
@@ -29,38 +38,29 @@ def _dedup_columns(columns):
             new_cols.append(f"{col}.{seen[col]}")
     return new_cols
 
-def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
-    '''
-    Returns a dictionary with player position, batting and throwing handedness, player height in inches, player weight, and current team from Baseball Reference.
-    '''
 
+def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     if not soup:
         soup = get_split_soup(playerid)
-    about_info = soup.find_all(
-        "div", {"class": "players"})
+    about_info = soup.find_all("div", {"class": "players"})
     info: List[bs.BeautifulSoup] = [ele for ele in about_info]
     fv = []
-    # This for loop goes through the player bio section at the top of the splits page to find all of the <p> tags
+
     for i in range(len(info)):
         ptags = info[i].find_all('p')
-
-        # This loop goes through each of the <p> tags and finds all text between the tags including the <strong> tags.
         for j in range(len(ptags)):
             InfoRegex = re.compile(r'>(.*?)<', re.DOTALL)
             r = InfoRegex.findall(str(ptags[j]))
-            # This loop cleans up the text found in the outer loop and removes non alphanumeric characters.
             for k in range(len(r)):
                 pattern = re.compile(r'[\W_]+')
                 strings = pattern.sub(' ', r[k])
                 if strings and strings != ' ':
                     fv.append(strings)
+
     player_info_data = {
-        'Position': fv[1],
-        'Bats': fv[3],
-        'Throws': fv[5],
-        # 'Height': int(fv[6].split(' ')[0])*12+int(fv[6].split(' ')[1]), # Commented out because I determined that Pablo Sandoval has some weird formatting that ruins this. Uncomment for ht, wt of most players. 
-        # 'Weight': int(fv[7][0:3]),
-        # 'Team': fv[10]
+        'Position': fv[1] if len(fv) > 1 else None,
+        'Bats': fv[3] if len(fv) > 3 else None,
+        'Throws': fv[5] if len(fv) > 5 else None,
     }
     return player_info_data
 
@@ -75,15 +75,15 @@ def get_splits(playerid: str, year: Optional[int] = None, pitching_splits: bool 
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
 
     headers = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/118.0.5993.117 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-}
-r = requests.get(url, headers=headers)
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/118.0.5993.117 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
 
+    r = requests.get(url, headers=headers)
     if r.status_code != 200:
         raise ValueError(f"Error fetching data for {playerid} (HTTP {r.status_code})")
 
@@ -127,8 +127,3 @@ r = requests.get(url, headers=headers)
 
     combined = pd.concat(all_rows, ignore_index=True)
     return combined
-
-
-
-
-
