@@ -4,9 +4,9 @@ from typing import Dict, List, Optional, Tuple, Union
 import bs4 as bs
 import pandas as pd
 
-import datasources.bref
+import requests
+session = requests.Session()
 
-session = datasources.bref.BRefSession()
 
 
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
