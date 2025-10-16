@@ -74,7 +74,16 @@ def get_splits(playerid: str, year: Optional[int] = None, pitching_splits: bool 
     str_year = 'Career' if year is None else str(year)
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
 
-    r = requests.get(url)
+    headers = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/118.0.5993.117 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+}
+r = requests.get(url, headers=headers)
+
     if r.status_code != 200:
         raise ValueError(f"Error fetching data for {playerid} (HTTP {r.status_code})")
 
