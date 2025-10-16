@@ -135,26 +135,32 @@ def get_splits(
                 j += 1
             group = df_raw[i+1:j]
             if group:
+                # Get split type from group rows, always use the first data row's split type
+                split_type = None
+                if "Split Type" in header_row:
+                    split_type_idx = header_row.index("Split Type")
+                    split_type = group[0][split_type_idx]
                 if not pitching_splits:
-                    # Insert blank row, then header row (except first group), then group
+                    # Insert blank row, then split type row, then header row (except first group), then group
                     if dataframes:  # skip inserting the first header
-                        blank = pd.DataFrame([[""] * len(header_row)], columns=header_row)
+                        blank = pd.DataFrame([[""] * (len(header_row) - 2)], columns=[h for h in header_row if h not in ("Split Type", "Player ID")])
                         dataframes.append(blank)
-                        df = pd.DataFrame([header_row] + group, columns=header_row)
-                        if "Player ID" in df.columns:
-                            df = df.drop(columns=["Player ID"])
+                        if split_type:
+                            split_type_row = pd.DataFrame([[split_type] + [""] * (len(header_row) - 3)], columns=[header_row[0]] + [h for h in header_row[1:] if h not in ("Split Type", "Player ID")])
+                            dataframes.append(split_type_row)
+                        df = pd.DataFrame([ [row[idx] for idx,h in enumerate(header_row) if h not in ("Split Type", "Player ID")] for row in [header_row] + group ], columns=[h for h in header_row if h not in ("Split Type", "Player ID")])
+                        df = df.iloc[1:].reset_index(drop=True)  # Remove header row for first line
                         dataframes.append(df)
                     else:
-                        # For first group, just add the group without its header
-                        df = pd.DataFrame(group, columns=header_row)
-                        if "Player ID" in df.columns:
-                            df = df.drop(columns=["Player ID"])
+                        # For first group, just add the group without its header, but add split type row
+                        if split_type:
+                            split_type_row = pd.DataFrame([[split_type] + [""] * (len(header_row) - 3)], columns=[header_row[0]] + [h for h in header_row[1:] if h not in ("Split Type", "Player ID")])
+                            dataframes.append(split_type_row)
+                        df = pd.DataFrame([ [row[idx] for idx,h in enumerate(header_row) if h not in ("Split Type", "Player ID")] for row in group ], columns=[h for h in header_row if h not in ("Split Type", "Player ID")])
                         dataframes.append(df)
                 else:
-                    # For pitching splits, standard behavior (keep all headers)
-                    df = pd.DataFrame([header_row] + group, columns=header_row)
-                    if "Player ID" in df.columns:
-                        df = df.drop(columns=["Player ID"])
+                    # For pitching splits, standard behavior (keep all headers, no split type banner)
+                    df = pd.DataFrame([ [row[idx] for idx,h in enumerate(header_row) if h not in ("Player ID")] for row in [header_row] + group ], columns=[h for h in header_row if h != "Player ID"])
                     dataframes.append(df)
                     blank = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
                     dataframes.append(blank)
