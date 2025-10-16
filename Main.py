@@ -115,15 +115,17 @@ def get_splits(
                 cols += [split_type, playerid]
                 target.append(cols)
 
-    def clean(df_raw):
+    def clean(df_raw, pitching_splits):
         if not df_raw:
             return pd.DataFrame()
 
-        # Build DataFrame by splitting at header rows
         dataframes = []
         i = 0
+        first_header_row = None
         while i < len(df_raw):
             header_row = df_raw[i]
+            if first_header_row is None:
+                first_header_row = header_row
             # Find next header or end
             j = i + 1
             while j < len(df_raw) and not (
@@ -133,14 +135,29 @@ def get_splits(
                 j += 1
             group = df_raw[i+1:j]
             if group:
-                # Insert header row before every group
-                df = pd.DataFrame([header_row] + group, columns=header_row)
-                if "Player ID" in df.columns:
-                    df = df.drop(columns=["Player ID"])
-                dataframes.append(df)
-                # Add blank row after each group
-                blank = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
-                dataframes.append(blank)
+                if not pitching_splits:
+                    # Insert blank row, then header row (except first group), then group
+                    if dataframes:  # skip inserting the first header
+                        blank = pd.DataFrame([[""] * len(header_row)], columns=header_row)
+                        dataframes.append(blank)
+                        df = pd.DataFrame([header_row] + group, columns=header_row)
+                        if "Player ID" in df.columns:
+                            df = df.drop(columns=["Player ID"])
+                        dataframes.append(df)
+                    else:
+                        # For first group, just add the group without its header
+                        df = pd.DataFrame(group, columns=header_row)
+                        if "Player ID" in df.columns:
+                            df = df.drop(columns=["Player ID"])
+                        dataframes.append(df)
+                else:
+                    # For pitching splits, standard behavior (keep all headers)
+                    df = pd.DataFrame([header_row] + group, columns=header_row)
+                    if "Player ID" in df.columns:
+                        df = df.drop(columns=["Player ID"])
+                    dataframes.append(df)
+                    blank = pd.DataFrame([[""] * len(df.columns)], columns=df.columns)
+                    dataframes.append(blank)
             i = j
 
         if dataframes:
@@ -148,8 +165,8 @@ def get_splits(
         else:
             return pd.DataFrame()
 
-    data = clean(raw_data)
-    level_data = clean(raw_level_data) if pitching_splits else pd.DataFrame()
+    data = clean(raw_data, pitching_splits)
+    level_data = clean(raw_level_data, True) if pitching_splits else pd.DataFrame()
 
     if pitching_splits:
         return data, level_data
