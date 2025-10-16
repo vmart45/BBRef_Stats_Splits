@@ -12,6 +12,7 @@ except ImportError:
     import requests
     USE_CURL = False
 
+
 class BRefSession:
     def __init__(self, max_requests_per_minute: int = 10):
         self.max_requests_per_minute = max_requests_per_minute
@@ -46,7 +47,9 @@ class BRefSession:
         except Exception as e:
             raise ValueError(f"Error fetching {url}: {e}")
 
+
 session = BRefSession()
+
 
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
     pitch_or_bat = "p" if pitching_splits else "b"
@@ -54,6 +57,7 @@ def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: b
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
     html = session.get(url).content
     return bs.BeautifulSoup(html, "lxml")
+
 
 def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
     if not soup:
@@ -73,6 +77,7 @@ def get_player_info(playerid: str, soup: bs.BeautifulSoup = None) -> Dict:
         "Bats": fv[3] if len(fv) > 3 else "",
         "Throws": fv[5] if len(fv) > 5 else "",
     }
+
 
 def get_splits(
     playerid: str,
@@ -104,7 +109,6 @@ def get_splits(
             headers += ["Split Type", "Player ID"]
 
             target = raw_level_data if split_type.endswith("Level") else raw_data
-
             target.append(headers)
             for row in rows[1:]:
                 cols = [ele.text.strip() for ele in row.find_all(["th", "td"])]
@@ -113,7 +117,6 @@ def get_splits(
                 cols += [split_type, playerid]
                 target.append(cols)
 
-    # 👇 clean() must be indented INSIDE get_splits
     def clean(df_raw, pitching_splits):
         if not df_raw:
             return pd.DataFrame()
@@ -121,7 +124,7 @@ def get_splits(
         tables = []
         i = 0
         first_actual_table = True
-        
+
         while i < len(df_raw):
             header_row = df_raw[i]
             j = i + 1
@@ -136,11 +139,11 @@ def get_splits(
                 i = j
                 continue
 
-            # Skip redundant stat header row
             first_data_row = group[0] if group else []
             first_col = first_data_row[0] if first_data_row else ""
+
             if first_col in [
-                "G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", 
+                "G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI",
                 "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS", "Split", ""
             ]:
                 i = j
@@ -186,19 +189,18 @@ def get_splits(
         if tables:
             result = pd.concat(tables, ignore_index=True)
             result.reset_index(drop=True, inplace=True)
-             result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
+            result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
 
-    # 🚫 Force-remove first row if it looks like a header (G, GS, PA, etc.)
-        if not result.empty:
-            first_row_text = " ".join(result.iloc[0].astype(str).tolist())
-            if any(x in first_row_text for x in ["G ", "GS", "PA", "AB", "R ", "H ", "BA", "OBP", "SLG", "OPS"]):
-                result = result.iloc[1:].reset_index(drop=True)
+            # 🚫 Force-remove first row if it looks like a header (G, GS, PA, etc.)
+            if not result.empty:
+                first_row_text = " ".join(result.iloc[0].astype(str).tolist())
+                if any(x in first_row_text for x in ["G ", "GS", "PA", "AB", "R ", "H ", "BA", "OBP", "SLG", "OPS"]):
+                    result = result.iloc[1:].reset_index(drop=True)
 
-        return result
+            return result
 
         return pd.DataFrame()
 
-    # ✅ Now these lines will run and return actual DataFrames
     data = clean(raw_data, pitching_splits)
     level_data = clean(raw_level_data, True) if pitching_splits else pd.DataFrame()
 
@@ -206,4 +208,3 @@ def get_splits(
         return data, level_data
     else:
         return data
-
