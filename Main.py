@@ -120,75 +120,75 @@ def get_splits(
         tables = []
         i = 0
         first_group = True
+        skipped_first_header = False
+
         while i < len(df_raw):
             header_row = df_raw[i]
             j = i + 1
             while j < len(df_raw) and not (
-                len(df_raw[j]) == len(header_row) and
-                all(x == y for x, y in zip(df_raw[j], header_row))
+                len(df_raw[j]) == len(header_row)
+                and all(x == y for x, y in zip(df_raw[j], header_row))
             ):
                 j += 1
+
             group = df_raw[i + 1:j]
-            if group:
-                split_type = None
-                if "Split Type" in header_row:
-                    split_type_idx = header_row.index("Split Type")
-                    split_type = group[0][split_type_idx]
-                keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
-                stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
+            if not group:
+                i = j
+                continue
 
-                if not pitching_splits:
-                    # Blank row before each group except the first one
-                    if not first_group:
-                        blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
-                        tables.append(blank)
-                        # Add split type and stat header for subsequent groups
-                        if split_type:
-                            split_type_row = pd.DataFrame(
-                                [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
-                            )
-                            tables.append(split_type_row)
-                        stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
-                        tables.append(stat_header_row)
-                    else:
-                        # For the first group, just add the split type (no stat header)
-                        if split_type:
-                            split_type_row = pd.DataFrame(
-                                [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
-                            )
-                            tables.append(split_type_row)
+            # Skip the very first stat header-only group (the "G GS PA AB..." one)
+            if not skipped_first_header and all(
+                h in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"]
+                for h in header_row[:min(10, len(header_row))]
+            ):
+                skipped_first_header = True
+                i = j
+                continue
 
-                # Data rows
-                df = pd.DataFrame(
-                    [
-                        [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
-                        for row in group
-                    ],
-                    columns=keep_cols,
-                )
-                tables.append(df)
-                first_group = False
+            split_type = None
+            if "Split Type" in header_row:
+                split_type_idx = header_row.index("Split Type")
+                split_type = group[0][split_type_idx]
+
+            keep_cols = [h for h in header_row if h not in ("Split Type", "Player ID")]
+            stat_header = [h for h in header_row if h not in ("Split Type", "Player ID")]
+
+            if not pitching_splits:
+                if not first_group:
+                    blank = pd.DataFrame([[""] * len(keep_cols)], columns=keep_cols)
+                    tables.append(blank)
+                    if split_type:
+                        split_type_row = pd.DataFrame(
+                            [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                        )
+                        tables.append(split_type_row)
+                    stat_header_row = pd.DataFrame([stat_header], columns=keep_cols)
+                    tables.append(stat_header_row)
+                else:
+                    if split_type:
+                        split_type_row = pd.DataFrame(
+                            [[split_type] + [""] * (len(keep_cols) - 1)], columns=keep_cols
+                        )
+                        tables.append(split_type_row)
+
+            df = pd.DataFrame(
+                [
+                    [row[idx] for idx, h in enumerate(header_row) if h not in ("Split Type", "Player ID")]
+                    for row in group
+                ],
+                columns=keep_cols,
+            )
+            tables.append(df)
+            first_group = False
             i = j
 
         if tables:
             result = pd.concat(tables, ignore_index=True)
             result.reset_index(drop=True, inplace=True)
-            result = result.loc[:, ~result.columns.str.match(r'^\s*$')]
-
-            # Explicitly remove redundant top header row (e.g. "G, GS, PA...")
-            if not pitching_splits and not result.empty:
-                first_row = result.iloc[0].tolist()
-                header_like = all(
-                    str(cell).strip() in ["G", "GS", "PA", "AB", "R", "H", "2B", "3B", "HR", "RBI"]
-                    for cell in first_row[:10]
-                )
-                if header_like:
-                    result = result.iloc[1:].reset_index(drop=True)
-
+            result = result.loc[:, ~result.columns.str.match(r"^\s*$")]
             return result
-        else:
-            return pd.DataFrame()
 
+        return pd.DataFrame()
 
     data = clean(raw_data, pitching_splits)
     level_data = clean(raw_level_data, True) if pitching_splits else pd.DataFrame()
@@ -197,13 +197,3 @@ def get_splits(
         return data, level_data
     else:
         return data
-
-if __name__ == "__main__":
-    skenes, skenes_level = get_splits("skenepa01", year=2025, pitching_splits=True)
-    skenes.to_csv("skenes_splits.csv", index=False)
-    skenes_level.to_csv("skenes_splits_level.csv", index=False)
-    print("✅ Exported skenes_splits.csv and skenes_splits_level.csv successfully!")
-
-    # trout = get_splits("troutmi01", year=2025, pitching_splits=False)
-    # trout.to_csv("trout_splits.csv", index=False)
-    # print("✅ Exported trout_splits.csv successfully!")
