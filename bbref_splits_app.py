@@ -8,7 +8,7 @@ st.write("Enter a Baseball-Reference Player ID, Year, and choose whether you wan
 
 # --- Inputs ---
 playerid = st.text_input("Player ID (e.g., troutmi01, skenepa01):")
-year = st.number_input("Year (leave 0 for Career)", min_value=0, max_value=2100, value=2024)
+year = st.number_input("Year (leave 0 for Career)", min_value=0, max_value=2100, value=2025)
 pitching = st.checkbox("Pitching Splits", value=False)
 
 if st.button("Get Splits"):
