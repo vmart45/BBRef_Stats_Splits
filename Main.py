@@ -10,13 +10,10 @@ session = requests.Session()
 
 
 def get_split_soup(playerid: str, year: Optional[int] = None, pitching_splits: bool = False) -> bs.BeautifulSoup:
-    """
-    gets soup for the player splits.
-    """
     pitch_or_bat = 'p' if pitching_splits else 'b'
     str_year = 'Career' if year is None else str(year)
     url = f"https://www.baseball-reference.com/players/split.fcgi?id={playerid}&year={str_year}&t={pitch_or_bat}"
-    html = session.get(url).content
+    html = session.get(url).text
     soup = bs.BeautifulSoup(html, 'lxml')
     return soup
 
